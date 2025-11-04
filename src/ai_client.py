@@ -294,6 +294,8 @@ Rules:
         Returns:
             Fallback result dictionary
         """
+        print("⚠️ WARNING: Using fallback heuristic - AI call failed!")
+        
         try:
             image = Image.open(io.BytesIO(image_bytes))
             
@@ -321,18 +323,21 @@ Rules:
             
             filename = f"{tone}-{color}-photo"
             
+            print(f"Fallback result: {filename}")
+            
             return {
                 'proposed_filename': filename,
-                'reasons': 'Generated using fallback heuristic (AI analysis failed)',
-                'semantic_tags': [tone, color, 'photo'],
+                'reasons': '⚠️ FALLBACK: AI analysis failed - using color detection',
+                'semantic_tags': [tone, color, 'photo', 'fallback'],
                 'confidence': 0.3
             }
             
-        except Exception:
+        except Exception as e:
+            print(f"Even fallback failed: {e}")
             return {
                 'proposed_filename': 'unnamed-photo',
-                'reasons': 'Could not analyze image',
-                'semantic_tags': ['photo'],
+                'reasons': '⚠️ FALLBACK: Could not analyze image',
+                'semantic_tags': ['photo', 'error'],
                 'confidence': 0.1
             }
 

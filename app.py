@@ -300,6 +300,10 @@ def analyze_images(
                         threshold=settings['confidence_threshold']
                     )
                     
+                    # Show what we got
+                    st.write(f"**Debug - AI Result:**")
+                    st.json(result)
+                    
                     status_text.text(f"✅ Got response in {latency:.1f}s")
                     
                     # Cache result
