@@ -105,14 +105,19 @@ Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
             api_start = time_module.time()
             
             try:
-                # Generate content with optimized settings for speed
+                # Generate content with optimized settings
+                # Try with just the image first to see if vision works
+                print(f"Sending request to {self.model_name}...")
+                print(f"Image size: {image.size}")
+                print(f"Prompt: {full_prompt[:100]}...")
+                
                 response = self.model.generate_content(
                     [full_prompt, image],
                     generation_config={
-                        'temperature': 0.1,  # Very low for consistent JSON
+                        'temperature': 0.1,
                         'top_p': 0.8,
                         'top_k': 10,
-                        'max_output_tokens': 200,  # Increased to avoid cutting off JSON
+                        'max_output_tokens': 500,  # Significantly increased
                         'candidate_count': 1,
                     },
                     safety_settings=[
@@ -122,6 +127,8 @@ Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
                         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
                     ]
                 )
+                
+                print(f"Response received. Type: {type(response)}")
                 
                 api_elapsed = time_module.time() - api_start
                 print(f"API call took {api_elapsed:.2f}s")
@@ -134,29 +141,37 @@ Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
                         print(f"Response blocked: {response.prompt_feedback}")
                     raise Exception(f"Response has no candidates (likely blocked). {error_details}")
                 
-                # Check if the candidate has content
+                # Check the candidate and try to extract content
                 candidate = response.candidates[0]
-                if not hasattr(candidate, 'content') or not candidate.content.parts:
-                    finish_reason = getattr(candidate, 'finish_reason', 'unknown')
-                    finish_reason_name = {
-                        0: "UNSPECIFIED",
-                        1: "STOP (normal)",
-                        2: "MAX_TOKENS (hit limit)",
-                        3: "SAFETY (blocked)",
-                        4: "RECITATION (copyright)",
-                        5: "OTHER"
-                    }.get(finish_reason, f"UNKNOWN ({finish_reason})")
-                    
-                    print(f"Finish reason: {finish_reason} = {finish_reason_name}")
-                    raise Exception(f"Response has no content. Finish reason: {finish_reason_name}")
+                finish_reason = getattr(candidate, 'finish_reason', 0)
+                finish_reason_name = {
+                    0: "UNSPECIFIED",
+                    1: "STOP",
+                    2: "MAX_TOKENS",
+                    3: "SAFETY",
+                    4: "RECITATION",
+                    5: "OTHER"
+                }.get(finish_reason, f"UNKNOWN_{finish_reason}")
                 
-                # Now safely extract text
+                print(f"Finish reason: {finish_reason} = {finish_reason_name}")
+                
+                # Try to extract text even if finish reason is MAX_TOKENS
+                response_text = None
                 try:
-                    response_text = candidate.content.parts[0].text.strip()
-                    print(f"Got response: {response_text[:200]}...")
+                    if hasattr(candidate, 'content') and candidate.content and candidate.content.parts:
+                        response_text = candidate.content.parts[0].text.strip()
+                        print(f"Got response text (length: {len(response_text)}): {response_text[:200]}...")
+                    else:
+                        print(f"No content.parts found. Candidate structure: {dir(candidate)}")
                 except (AttributeError, IndexError) as e:
                     print(f"Error accessing response text: {e}")
-                    raise Exception(f"Could not extract text from response: {e}")
+                
+                # If we got text, use it even if MAX_TOKENS
+                if response_text:
+                    print(f"Successfully extracted {len(response_text)} chars (finish: {finish_reason_name})")
+                else:
+                    # No text at all - this is a real error
+                    raise Exception(f"No text in response. Finish: {finish_reason_name}. Check if model supports vision.")
                 
                 # Check if response looks like JSON
                 if not response_text.startswith('{'):
