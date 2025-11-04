@@ -146,13 +146,13 @@ def estimate_cost(num_images: int, model_name: str) -> Dict[str, Any]:
         'gemini-pro-latest': 0.00025,
     }
     
-    # Average processing time per image (seconds)
+    # Average processing time per image (seconds) - optimized
     time_per_image = {
-        'gemini-2.5-flash': 2.5,      # ~2.5 seconds per image
-        'gemini-2.5-pro': 4.0,        # ~4 seconds per image
-        'gemini-2.0-flash': 2.5,
-        'gemini-flash-latest': 2.5,
-        'gemini-pro-latest': 4.0,
+        'gemini-2.5-flash': 1.5,      # ~1.5 seconds per image (optimized)
+        'gemini-2.5-pro': 3.0,        # ~3 seconds per image
+        'gemini-2.0-flash': 1.5,
+        'gemini-flash-latest': 1.5,
+        'gemini-pro-latest': 3.0,
     }
     
     rate = cost_per_image.get(model_name, 0.00001)

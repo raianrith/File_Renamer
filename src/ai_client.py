@@ -32,21 +32,10 @@ class GeminiClient:
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the model."""
-        return """You are renaming JPEG photos for a user. Output strict JSON with keys:
-- proposed_filename: string (no extension, <= 60 chars, kebab-case by default)
-- reasons: string (one sentence, plain text)
-- semantic_tags: array of short strings like ["beach","sunset","two-people"]
-- confidence: number between 0 and 1
+        return """Analyze this image and suggest a descriptive filename. Return ONLY valid JSON:
+{"proposed_filename":"descriptive-name","reasons":"brief explanation","semantic_tags":["tag1","tag2"],"confidence":0.8}
 
-Rules:
-- Be concise and specific (e.g., "golden-retriever-playing-fetch", not "dog").
-- If a prominent landmark or object is identifiable with high confidence, include it.
-- If faces appear but identity is unknown, use generic terms like "person" or "group".
-- Avoid private/sensitive info. Never guess identities.
-- If the image is ambiguous, prefer general but still descriptive terms.
-- Do not include dates unless EXIF indicates a clear capture date (the app may prefix it).
-- Do not include extension or illegal filename characters.
-Return only JSON. No extra text."""
+Rules: Be specific but concise. No extension. Use kebab-case. Max 60 chars. No dates."""
     
     def _create_user_prompt(
         self,
@@ -56,7 +45,7 @@ Return only JSON. No extra text."""
         threshold: float
     ) -> str:
         """
-        Create the user prompt for a specific image.
+        Create the user prompt for a specific image (simplified for speed).
         
         Args:
             casing: Target casing style
@@ -67,21 +56,11 @@ Return only JSON. No extra text."""
         Returns:
             Formatted prompt string
         """
-        return f"""Analyze this JPEG and propose a descriptive filename based on its content.
-Context:
-- Target casing: {casing}  (one of kebab, snake, camel, title)
-- Max length: {max_len}
-- OCR tokens to consider: {ocr_tokens}
-- Desired specificity: clear, short, content-based.
-- Confidence threshold: {threshold}
-
-If your confidence in key terms is below threshold, back off to a more general but still useful name.
-
-Return JSON as specified."""
+        return f"Describe this image in a filename. Max {max_len} chars. Style: {casing}. Return JSON only."
     
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),  # Reduced from 3 to 2 attempts
+        wait=wait_exponential(multiplier=1, min=1, max=5),  # Faster retry
         retry=retry_if_exception_type((Exception,))
     )
     def analyze_image(
@@ -108,8 +87,15 @@ Return JSON as specified."""
         start_time = time.time()
         
         try:
-            # Load image
+            # Load and resize image for faster processing
             image = Image.open(io.BytesIO(image_bytes))
+            
+            # Resize large images to max 1024px on longest side
+            max_dimension = 1024
+            if max(image.size) > max_dimension:
+                ratio = max_dimension / max(image.size)
+                new_size = tuple(int(dim * ratio) for dim in image.size)
+                image = image.resize(new_size, Image.Resampling.LANCZOS)
             
             # Create prompts
             system_prompt = self._create_system_prompt()
@@ -123,14 +109,14 @@ Return JSON as specified."""
             api_start = time_module.time()
             
             try:
-                # Generate content with safety settings
+                # Generate content with optimized settings for speed
                 response = self.model.generate_content(
                     [full_prompt, image],
                     generation_config={
-                        'temperature': 0.7,
-                        'top_p': 0.95,
-                        'top_k': 40,
-                        'max_output_tokens': 500,
+                        'temperature': 0.3,  # Lower for faster, more consistent results
+                        'top_p': 0.8,
+                        'top_k': 20,
+                        'max_output_tokens': 150,  # Reduced since we only need short JSON
                     },
                     safety_settings=[
                         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
