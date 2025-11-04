@@ -40,7 +40,7 @@ from src.zip_export import (
 
 # Page config
 st.set_page_config(
-    page_title="Smart JPEG Renamer",
+    page_title="Weidert Internal AI JPEG File Renamer",
     page_icon="📸",
     layout="wide",
     initial_sidebar_state="expanded"
