@@ -249,21 +249,8 @@ def render_review_table(files_data: List[Dict[str, Any]]) -> pd.DataFrame:
 
 def render_batch_actions():
     """Render batch action buttons."""
-    st.subheader("🔧 Batch Actions")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("🔄 Re-apply Casing", use_container_width=True):
-            st.session_state.reapply_casing = True
-    
-    with col2:
-        if st.button("📅 Re-apply EXIF Dates", use_container_width=True):
-            st.session_state.reapply_exif = True
-    
-    with col3:
-        if st.button("✅ Validate All", use_container_width=True):
-            st.session_state.validate_all = True
+    # Batch actions removed per user request
+    pass
 
 
 def render_find_replace():
@@ -294,17 +281,7 @@ def render_find_replace():
 def render_export_section():
     """Render export buttons."""
     st.subheader("📦 Export")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.button("⬇️ Download ZIP", key='download_zip_btn', use_container_width=True)
-    
-    with col2:
-        st.button("📄 Download CSV", key='download_csv_btn', use_container_width=True)
-    
-    with col3:
-        st.button("📋 Save Session Log", key='download_log_btn', use_container_width=True)
+    # Just show download ZIP button - other buttons rendered in app.py
 
 
 def render_footer():
@@ -319,15 +296,19 @@ def render_footer():
     """, unsafe_allow_html=True)
 
 
-def show_progress(current: int, total: int, message: str = "Processing"):
+def show_progress(current: int, total: int, message: str = "Processing", cost_info: str = ""):
     """
-    Show a progress bar.
+    Show a progress bar with optional cost information.
     
     Args:
         current: Current progress
         total: Total items
         message: Progress message
+        cost_info: Optional cost information to display
     """
     progress = current / total if total > 0 else 0
-    st.progress(progress, text=f"{message}: {current}/{total}")
+    progress_text = f"{message}: {current}/{total}"
+    if cost_info:
+        progress_text += f" | {cost_info}"
+    st.progress(progress, text=progress_text)
 

@@ -14,8 +14,6 @@ from src.ui import (
     render_file_uploader,
     render_preview_grid,
     render_review_table,
-    render_batch_actions,
-    render_find_replace,
     render_export_section,
     render_footer,
     show_progress
@@ -128,6 +126,37 @@ def process_uploaded_files(uploaded_files: List[Any]) -> List[Dict[str, Any]]:
     return files_data
 
 
+def estimate_cost(num_images: int, model_name: str) -> Dict[str, Any]:
+    """
+    Estimate API cost for processing images.
+    
+    Args:
+        num_images: Number of images to process
+        model_name: Model name being used
+        
+    Returns:
+        Dictionary with cost estimates
+    """
+    # Gemini API pricing (approximate)
+    cost_per_image = {
+        'gemini-2.5-flash': 0.0000075,  # $0.000075 per 10 images
+        'gemini-2.5-pro': 0.00025,      # $0.0025 per 10 images
+        'gemini-2.0-flash': 0.0000075,
+        'gemini-flash-latest': 0.0000075,
+        'gemini-pro-latest': 0.00025,
+    }
+    
+    rate = cost_per_image.get(model_name, 0.00001)
+    estimated_cost = num_images * rate
+    
+    return {
+        'total_images': num_images,
+        'cost_per_image': rate,
+        'estimated_cost': estimated_cost,
+        'credits_used': num_images  # Simplified credit tracking
+    }
+
+
 def analyze_images(
     files_data: List[Dict[str, Any]],
     settings: Dict[str, Any],
@@ -148,14 +177,29 @@ def analyze_images(
         st.error(f"Failed to initialize Gemini client: {e}")
         return
     
+    # Calculate and display cost estimate
+    total_files = len(files_data)
+    cost_info = estimate_cost(total_files, settings['model'])
+    
+    # Show cost estimate upfront
+    st.info(f"""
+    📊 **Processing Summary**
+    - Images: {cost_info['total_images']}
+    - Model: {settings['model']}
+    - Estimated cost: ${cost_info['estimated_cost']:.6f}
+    - Credits: ~{cost_info['credits_used']} API calls
+    """)
+    
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    total_files = len(files_data)
+    cost_text = st.empty()
     
     for idx, file_info in enumerate(files_data):
+        # Update progress with cost tracking
+        current_cost = (idx + 1) * cost_info['cost_per_image']
         status_text.text(f"Processing {idx + 1}/{total_files}: {file_info['original_name']}")
+        cost_text.text(f"💰 Current cost: ${current_cost:.6f} | Credits used: {idx + 1}")
         
         try:
             # Extract EXIF data
@@ -229,7 +273,10 @@ def analyze_images(
     for idx, file_info in enumerate(files_data):
         file_info['new_name'] = unique_names[idx]
     
+    # Show final cost
+    final_cost = total_files * cost_info['cost_per_image']
     status_text.text("✅ Processing complete!")
+    cost_text.success(f"✅ Total cost: ${final_cost:.6f} | Total credits: {total_files} API calls")
     st.session_state.processing_complete = True
 
 
@@ -377,14 +424,6 @@ def main():
         if st.session_state.processing_complete:
             st.divider()
             
-            # Batch actions
-            render_batch_actions()
-            render_find_replace()
-            
-            handle_batch_actions(settings)
-            
-            st.divider()
-            
             # Review table
             edited_df = render_review_table(st.session_state.files_data)
             
@@ -394,59 +433,28 @@ def main():
             
             st.divider()
             
-            # Export section
+            # Export section - simplified to just ZIP download
             render_export_section()
             
-            # Handle export buttons
-            col1, col2, col3 = st.columns(3)
+            # Validate before export
+            is_valid, errors = validate_files_for_export(st.session_state.files_data)
             
-            with col1:
-                # Validate before export
-                is_valid, errors = validate_files_for_export(st.session_state.files_data)
-                
-                if is_valid:
-                    # Create ZIP
-                    try:
-                        zip_bytes = create_zip_with_renamed_files(st.session_state.files_data)
-                        st.download_button(
-                            label="⬇️ Download ZIP",
-                            data=zip_bytes,
-                            file_name=f"renamed_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                            mime="application/zip",
-                            use_container_width=True
-                        )
-                    except Exception as e:
-                        st.error(f"Error creating ZIP: {e}")
-                else:
-                    st.error("❌ Cannot export: " + "; ".join(errors))
-            
-            with col2:
-                # Create CSV
+            if is_valid:
+                # Create ZIP
                 try:
-                    csv_string = create_csv_mapping(st.session_state.files_data)
+                    zip_bytes = create_zip_with_renamed_files(st.session_state.files_data)
                     st.download_button(
-                        label="📄 Download CSV",
-                        data=csv_string,
-                        file_name=f"filename_mapping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
+                        label="⬇️ Download Renamed Images (ZIP)",
+                        data=zip_bytes,
+                        file_name=f"renamed_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                        mime="application/zip",
+                        type="primary",
                         use_container_width=True
                     )
                 except Exception as e:
-                    st.error(f"Error creating CSV: {e}")
-            
-            with col3:
-                # Create session log
-                try:
-                    log_json = create_session_log(st.session_state.files_data, settings)
-                    st.download_button(
-                        label="📋 Save Session Log",
-                        data=log_json,
-                        file_name=f"session_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Error creating log: {e}")
+                    st.error(f"Error creating ZIP: {e}")
+            else:
+                st.error("❌ Cannot export: " + "; ".join(errors))
             
             # Reset button
             st.divider()
