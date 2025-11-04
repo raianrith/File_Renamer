@@ -15,7 +15,7 @@ def render_header():
     **Intelligent batch renaming powered by Google Gemini Vision**
     
     Upload your JPEG images, let AI analyze them, review suggestions, and download renamed files.
-    [📖 View README](https://github.com/yourusername/smart-renamer)
+    [📖 View README](https://github.com/raianrith/File_Renamer/blob/main/README.md)
     """)
     st.divider()
 
