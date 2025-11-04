@@ -1,0 +1,11 @@
+# This file helps with GitHub integration
+# Streamlit Cloud will automatically deploy when you push to main branch
+name: Streamlit Cloud Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+# No additional steps needed - Streamlit Cloud handles deployment automatically
+

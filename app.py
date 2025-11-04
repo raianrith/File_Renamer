@@ -7,35 +7,46 @@ from typing import List, Dict, Any
 import pandas as pd
 from datetime import datetime
 
-# Import custom modules
-from src.ui import (
-    render_header,
-    render_settings_sidebar,
-    render_file_uploader,
-    render_preview_grid,
-    render_review_table,
-    render_export_section,
-    render_footer,
-    show_progress
-)
-from src.ai_client import GeminiClient
-from src.exif_utils import extract_exif, get_exif_date, format_exif_summary, create_thumbnail
-from src.ocr_utils import is_ocr_available, extract_text_tokens, format_tokens_for_prompt
-from src.naming import (
-    sanitize_filename,
-    apply_casing,
-    ensure_uniqueness,
-    validate_filename,
-    add_exif_prefix,
-    find_and_replace
-)
-from src.caching import compute_image_hash, get_from_cache, cache_result
-from src.zip_export import (
-    create_zip_with_renamed_files,
-    create_csv_mapping,
-    create_session_log,
-    validate_files_for_export
-)
+# Import custom modules with error handling for Streamlit Cloud
+import sys
+import os
+
+# Add src to path for Streamlit Cloud compatibility
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from src.ui import (
+        render_header,
+        render_settings_sidebar,
+        render_file_uploader,
+        render_preview_grid,
+        render_review_table,
+        render_export_section,
+        render_footer,
+        show_progress
+    )
+    from src.ai_client import GeminiClient
+    from src.exif_utils import extract_exif, get_exif_date, format_exif_summary, create_thumbnail
+    from src.ocr_utils import is_ocr_available, extract_text_tokens, format_tokens_for_prompt
+    from src.naming import (
+        sanitize_filename,
+        apply_casing,
+        ensure_uniqueness,
+        validate_filename,
+        add_exif_prefix,
+        find_and_replace
+    )
+    from src.caching import compute_image_hash, get_from_cache, cache_result
+    from src.zip_export import (
+        create_zip_with_renamed_files,
+        create_csv_mapping,
+        create_session_log,
+        validate_files_for_export
+    )
+except ImportError as e:
+    st.error(f"Import Error: {e}")
+    st.error("Please make sure all files are properly uploaded to GitHub")
+    st.stop()
 
 
 # Page config
