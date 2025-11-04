@@ -32,10 +32,21 @@ class GeminiClient:
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the model."""
-        return """Analyze this image and suggest a descriptive filename. Return ONLY valid JSON:
-{"proposed_filename":"descriptive-name","reasons":"brief explanation","semantic_tags":["tag1","tag2"],"confidence":0.8}
+        return """Analyze this image and return a descriptive filename in JSON format.
 
-Rules: Be specific but concise. No extension. Use kebab-case. Max 60 chars. No dates."""
+Return ONLY this JSON structure (no markdown, no extra text):
+{
+  "proposed_filename": "descriptive-kebab-case-name",
+  "reasons": "Brief one-sentence description",
+  "semantic_tags": ["tag1", "tag2", "tag3"],
+  "confidence": 0.85
+}
+
+Rules:
+- proposed_filename: descriptive, kebab-case, no extension, max 60 chars
+- Be specific (e.g., "golden-retriever-puppy" not just "dog")
+- confidence: 0.0 to 1.0 based on image clarity
+- Return ONLY the JSON, nothing else"""
     
     def _create_user_prompt(
         self,
@@ -56,7 +67,7 @@ Rules: Be specific but concise. No extension. Use kebab-case. Max 60 chars. No d
         Returns:
             Formatted prompt string
         """
-        return f"Describe this image in a filename. Max {max_len} chars. Style: {casing}. Return JSON only."
+        return f"Analyze this image and return the JSON format shown above. Target style: {casing}. Max length: {max_len} chars."
     
     @retry(
         stop=stop_after_attempt(2),  # Reduced from 3 to 2 attempts
@@ -137,7 +148,19 @@ Rules: Be specific but concise. No extension. Use kebab-case. Max 60 chars. No d
                 
                 # Extract text from response
                 response_text = response.text.strip()
-                print(f"Got response: {response_text[:100]}...")
+                print(f"Got response: {response_text[:200]}...")
+                
+                # Check if response looks like JSON
+                if not response_text.startswith('{'):
+                    print(f"WARNING: Response doesn't start with '{{': {response_text[:50]}")
+                    # Try to extract JSON from response
+                    import re
+                    json_match = re.search(r'\{[^}]+\}', response_text, re.DOTALL)
+                    if json_match:
+                        response_text = json_match.group(0)
+                        print(f"Extracted JSON: {response_text[:100]}")
+                    else:
+                        raise Exception(f"No valid JSON found in response: {response_text[:100]}")
                 
             except Exception as api_error:
                 print(f"API Error after {time_module.time() - api_start:.2f}s: {api_error}")
@@ -153,16 +176,22 @@ Rules: Be specific but concise. No extension. Use kebab-case. Max 60 chars. No d
             return result, latency
             
         except json.JSONDecodeError as e:
+            print(f"JSON Parse Error: {e}")
+            print(f"Response was: {response_text[:300]}")
+            
             # Try to repair the JSON
             repaired = self._attempt_json_repair(response_text)
             if repaired:
+                print("Successfully repaired JSON")
                 latency = time.time() - start_time
                 return repaired, latency
             
             # Fallback to heuristic
+            print("Using fallback heuristic (JSON repair failed)")
             return self._fallback_heuristic(image_bytes), time.time() - start_time
             
         except Exception as e:
+            print(f"General Error: {e}")
             # Fallback to heuristic
             return self._fallback_heuristic(image_bytes), time.time() - start_time
     

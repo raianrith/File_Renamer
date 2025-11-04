@@ -297,6 +297,9 @@ def analyze_images(
                     error_msg = str(api_error)
                     st.error(f"⚠️ API Error for {file_info['original_name']}: {error_msg}")
                     
+                    # Show terminal output for debugging
+                    st.code(f"Error details: {error_msg}", language="text")
+                    
                     # Show more detailed error info
                     if "timeout" in error_msg.lower():
                         st.warning("API call timed out. The server might be overloaded. Try again in a moment.")
@@ -304,15 +307,20 @@ def analyze_images(
                         st.error("Model not found. Please check your model selection in settings.")
                     elif "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
                         st.error("API key doesn't have permission. Check your Gemini API key settings.")
+                    elif "json" in error_msg.lower():
+                        st.warning("AI returned invalid JSON. Using fallback naming.")
                     
-                    # Use fallback
+                    # Use fallback with better naming
                     result = {
-                        'proposed_filename': f'photo-{idx+1}',
-                        'reasons': f'API error: {error_msg[:100]}',
+                        'proposed_filename': f'image-{idx+1:03d}',
+                        'reasons': f'Fallback: {error_msg[:50]}',
                         'semantic_tags': ['photo'],
                         'confidence': 0.1
                     }
                     latency = 0.0
+                    
+                    # Don't stop processing, continue to next image
+                    continue
             
             # Process result
             proposed_name = result['proposed_filename']
