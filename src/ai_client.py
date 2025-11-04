@@ -32,9 +32,9 @@ class GeminiClient:
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the model."""
-        return """Return ONLY valid JSON with a filename for this image:
-{"proposed_filename":"short-descriptive-name","reasons":"brief","semantic_tags":["tag1","tag2"],"confidence":0.8}
-Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
+        return """Describe this image in a short kebab-case filename (max 60 chars). Return this JSON:
+{"proposed_filename":"your-description-here","reasons":"brief","semantic_tags":["tag1","tag2"],"confidence":0.8}
+NO markdown. NO code blocks. ONLY the JSON object."""
     
     def _create_user_prompt(
         self,
@@ -173,17 +173,37 @@ Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
                     # No text at all - this is a real error
                     raise Exception(f"No text in response. Finish: {finish_reason_name}. Check if model supports vision.")
                 
+                # Clean up response - remove markdown code blocks
+                if '```json' in response_text or '```' in response_text:
+                    print("Removing markdown code blocks...")
+                    response_text = response_text.replace('```json', '').replace('```', '').strip()
+                
                 # Check if response looks like JSON
                 if not response_text.startswith('{'):
                     print(f"WARNING: Response doesn't start with '{{': {response_text[:50]}")
                     # Try to extract JSON from response
                     import re
-                    json_match = re.search(r'\{[^}]+\}', response_text, re.DOTALL)
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                     if json_match:
                         response_text = json_match.group(0)
                         print(f"Extracted JSON: {response_text[:100]}")
                     else:
                         raise Exception(f"No valid JSON found in response: {response_text[:100]}")
+                
+                # If JSON looks incomplete, try to complete it
+                if not response_text.endswith('}'):
+                    print(f"WARNING: JSON appears incomplete: {response_text[-50:]}")
+                    # Try to fix common incomplete patterns
+                    if '"proposed_filename"' in response_text:
+                        # Extract just the filename if that's all we got
+                        import re
+                        match = re.search(r'"proposed_filename":\s*"([^"]*)', response_text)
+                        if match:
+                            filename = match.group(1)
+                            print(f"Extracted incomplete filename: {filename}")
+                            # Build complete JSON with extracted filename
+                            response_text = f'{{"proposed_filename":"{filename}","reasons":"Partial response","semantic_tags":["photo"],"confidence":0.7}}'
+                            print(f"Reconstructed JSON: {response_text}")
                 
             except Exception as api_error:
                 print(f"API Error after {time_module.time() - api_start:.2f}s: {api_error}")
