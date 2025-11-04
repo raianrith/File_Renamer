@@ -1,0 +1,290 @@
+"""
+Gemini AI client with retry logic and JSON schema enforcement.
+"""
+import json
+import time
+from typing import Dict, Any, Optional, Tuple
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type
+)
+import google.generativeai as genai
+from PIL import Image
+import io
+
+
+class GeminiClient:
+    """Client for interacting with Google Gemini Vision API."""
+    
+    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
+        """
+        Initialize the Gemini client.
+        
+        Args:
+            api_key: Google Gemini API key
+            model_name: Model name to use
+        """
+        genai.configure(api_key=api_key)
+        self.model_name = model_name
+        self.model = genai.GenerativeModel(model_name)
+    
+    def _create_system_prompt(self) -> str:
+        """Create the system prompt for the model."""
+        return """You are renaming JPEG photos for a user. Output strict JSON with keys:
+- proposed_filename: string (no extension, <= 60 chars, kebab-case by default)
+- reasons: string (one sentence, plain text)
+- semantic_tags: array of short strings like ["beach","sunset","two-people"]
+- confidence: number between 0 and 1
+
+Rules:
+- Be concise and specific (e.g., "golden-retriever-playing-fetch", not "dog").
+- If a prominent landmark or object is identifiable with high confidence, include it.
+- If faces appear but identity is unknown, use generic terms like "person" or "group".
+- Avoid private/sensitive info. Never guess identities.
+- If the image is ambiguous, prefer general but still descriptive terms.
+- Do not include dates unless EXIF indicates a clear capture date (the app may prefix it).
+- Do not include extension or illegal filename characters.
+Return only JSON. No extra text."""
+    
+    def _create_user_prompt(
+        self,
+        casing: str,
+        max_len: int,
+        ocr_tokens: str,
+        threshold: float
+    ) -> str:
+        """
+        Create the user prompt for a specific image.
+        
+        Args:
+            casing: Target casing style
+            max_len: Maximum filename length
+            ocr_tokens: OCR tokens to consider
+            threshold: Confidence threshold
+            
+        Returns:
+            Formatted prompt string
+        """
+        return f"""Analyze this JPEG and propose a descriptive filename based on its content.
+Context:
+- Target casing: {casing}  (one of kebab, snake, camel, title)
+- Max length: {max_len}
+- OCR tokens to consider: {ocr_tokens}
+- Desired specificity: clear, short, content-based.
+- Confidence threshold: {threshold}
+
+If your confidence in key terms is below threshold, back off to a more general but still useful name.
+
+Return JSON as specified."""
+    
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,))
+    )
+    def analyze_image(
+        self,
+        image_bytes: bytes,
+        casing: str = "kebab",
+        max_len: int = 60,
+        ocr_tokens: str = "None",
+        threshold: float = 0.4
+    ) -> Tuple[Dict[str, Any], float]:
+        """
+        Analyze an image and get filename suggestion.
+        
+        Args:
+            image_bytes: Raw image bytes
+            casing: Target casing style
+            max_len: Maximum filename length
+            ocr_tokens: OCR tokens string
+            threshold: Confidence threshold
+            
+        Returns:
+            Tuple of (result dictionary, latency in seconds)
+        """
+        start_time = time.time()
+        
+        try:
+            # Load image
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            # Create prompts
+            system_prompt = self._create_system_prompt()
+            user_prompt = self._create_user_prompt(casing, max_len, ocr_tokens, threshold)
+            
+            # Combine prompts
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            
+            # Call Gemini API
+            response = self.model.generate_content([full_prompt, image])
+            
+            # Extract text from response
+            response_text = response.text.strip()
+            
+            # Parse JSON
+            result = self._parse_json_response(response_text)
+            
+            # Validate schema
+            result = self._validate_and_fix_schema(result)
+            
+            latency = time.time() - start_time
+            return result, latency
+            
+        except json.JSONDecodeError as e:
+            # Try to repair the JSON
+            repaired = self._attempt_json_repair(response_text)
+            if repaired:
+                latency = time.time() - start_time
+                return repaired, latency
+            
+            # Fallback to heuristic
+            return self._fallback_heuristic(image_bytes), time.time() - start_time
+            
+        except Exception as e:
+            # Fallback to heuristic
+            return self._fallback_heuristic(image_bytes), time.time() - start_time
+    
+    def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
+        """
+        Parse JSON from response text.
+        
+        Args:
+            response_text: Raw response text
+            
+        Returns:
+            Parsed JSON dictionary
+        """
+        # Try to extract JSON if wrapped in markdown code blocks
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        elif "```" in response_text:
+            start = response_text.find("```") + 3
+            end = response_text.find("```", start)
+            response_text = response_text[start:end].strip()
+        
+        return json.loads(response_text)
+    
+    def _validate_and_fix_schema(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate and fix the JSON schema.
+        
+        Args:
+            data: Parsed JSON data
+            
+        Returns:
+            Validated/fixed data
+        """
+        required_keys = ['proposed_filename', 'reasons', 'semantic_tags', 'confidence']
+        
+        # Ensure all required keys exist
+        for key in required_keys:
+            if key not in data:
+                if key == 'proposed_filename':
+                    data[key] = 'unnamed-photo'
+                elif key == 'reasons':
+                    data[key] = 'No description available'
+                elif key == 'semantic_tags':
+                    data[key] = []
+                elif key == 'confidence':
+                    data[key] = 0.5
+        
+        # Validate types
+        if not isinstance(data['proposed_filename'], str):
+            data['proposed_filename'] = str(data['proposed_filename'])
+        
+        if not isinstance(data['reasons'], str):
+            data['reasons'] = str(data['reasons'])
+        
+        if not isinstance(data['semantic_tags'], list):
+            data['semantic_tags'] = []
+        
+        # Ensure confidence is between 0 and 1
+        try:
+            confidence = float(data['confidence'])
+            data['confidence'] = max(0.0, min(1.0, confidence))
+        except (ValueError, TypeError):
+            data['confidence'] = 0.5
+        
+        return data
+    
+    def _attempt_json_repair(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """
+        Attempt to repair malformed JSON.
+        
+        Args:
+            response_text: Raw response text
+            
+        Returns:
+            Repaired JSON dictionary or None
+        """
+        try:
+            # Try to find JSON-like content
+            start = response_text.find('{')
+            end = response_text.rfind('}') + 1
+            
+            if start != -1 and end > start:
+                json_str = response_text[start:end]
+                data = json.loads(json_str)
+                return self._validate_and_fix_schema(data)
+        except Exception:
+            pass
+        
+        return None
+    
+    def _fallback_heuristic(self, image_bytes: bytes) -> Dict[str, Any]:
+        """
+        Generate a fallback filename using simple heuristics.
+        
+        Args:
+            image_bytes: Raw image bytes
+            
+        Returns:
+            Fallback result dictionary
+        """
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            # Get dominant color (very simple heuristic)
+            image_small = image.resize((50, 50))
+            pixels = list(image_small.getdata())
+            
+            r_avg = sum(p[0] if isinstance(p, tuple) else p for p in pixels) / len(pixels)
+            g_avg = sum(p[1] if isinstance(p, tuple) else p for p in pixels) / len(pixels)
+            b_avg = sum(p[2] if isinstance(p, tuple) else p for p in pixels) / len(pixels)
+            
+            # Determine dominant color
+            if r_avg > g_avg and r_avg > b_avg:
+                color = "red"
+            elif g_avg > r_avg and g_avg > b_avg:
+                color = "green"
+            elif b_avg > r_avg and b_avg > g_avg:
+                color = "blue"
+            else:
+                color = "neutral"
+            
+            # Check brightness
+            brightness = (r_avg + g_avg + b_avg) / 3
+            tone = "bright" if brightness > 128 else "dark"
+            
+            filename = f"{tone}-{color}-photo"
+            
+            return {
+                'proposed_filename': filename,
+                'reasons': 'Generated using fallback heuristic (AI analysis failed)',
+                'semantic_tags': [tone, color, 'photo'],
+                'confidence': 0.3
+            }
+            
+        except Exception:
+            return {
+                'proposed_filename': 'unnamed-photo',
+                'reasons': 'Could not analyze image',
+                'semantic_tags': ['photo'],
+                'confidence': 0.1
+            }
+

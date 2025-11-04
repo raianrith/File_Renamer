@@ -1,0 +1,2 @@
+"""Smart Renamer - Source Package"""
+
