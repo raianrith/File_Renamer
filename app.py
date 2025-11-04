@@ -461,13 +461,9 @@ def main():
         settings['include_ocr'] = False
     
     # File uploader
-    # Use a key that can be reset
-    if 'uploader_key' not in st.session_state:
-        st.session_state.uploader_key = 0
-    
     uploaded_files = render_file_uploader()
     
-    # Process uploaded files (only if we don't already have files or if new files uploaded)
+    # Process uploaded files
     if uploaded_files:
         # Check if these are new files (different count or different names)
         current_names = [f.name for f in uploaded_files]
@@ -476,10 +472,11 @@ def main():
         if current_names != existing_names:
             st.session_state.files_data = process_uploaded_files(uploaded_files)
             st.session_state.processing_complete = False
-    elif not uploaded_files and st.session_state.files_data:
-        # Files were cleared, reset state
-        st.session_state.files_data = []
-        st.session_state.processing_complete = False
+    elif not uploaded_files:
+        # No files uploaded, clear state if needed
+        if st.session_state.files_data:
+            st.session_state.files_data = []
+            st.session_state.processing_complete = False
     
     # Preview grid
     if st.session_state.files_data:
@@ -539,6 +536,9 @@ def main():
                 # Clear any cached data
                 if 'result_cache' in st.session_state:
                     st.session_state.result_cache = {}
+                # Increment uploader key to reset file uploader widget
+                if 'uploader_key' in st.session_state:
+                    st.session_state.uploader_key += 1
                 st.rerun()
     
     # Footer

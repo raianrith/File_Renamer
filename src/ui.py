@@ -127,11 +127,17 @@ def render_file_uploader(max_files: int = 200, max_size_mb: int = 50) -> List[An
     """
     st.subheader("📁 Upload Images")
     
+    # Use dynamic key for complete reset capability
+    import streamlit as st
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+    
     uploaded_files = st.file_uploader(
         f"Choose JPEG files (max {max_files} files, {max_size_mb}MB each)",
         type=['jpg', 'jpeg'],
         accept_multiple_files=True,
-        help="Upload one or more JPEG images"
+        help="Upload one or more JPEG images",
+        key=f"file_uploader_{st.session_state.uploader_key}"
     )
     
     if uploaded_files:
