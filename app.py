@@ -278,7 +278,9 @@ def analyze_images(
             else:
                 # Call AI with error handling
                 try:
+                    status_text.text(f"🤖 Calling Gemini API for {file_info['original_name']}...")
                     ocr_tokens_str = format_tokens_for_prompt(ocr_tokens)
+                    
                     result, latency = client.analyze_image(
                         file_info['bytes'],
                         casing=settings['casing'],
@@ -287,14 +289,26 @@ def analyze_images(
                         threshold=settings['confidence_threshold']
                     )
                     
+                    status_text.text(f"✅ Got response in {latency:.1f}s")
+                    
                     # Cache result
                     cache_result(image_hash, settings, result)
                 except Exception as api_error:
-                    st.error(f"⚠️ API Error for {file_info['original_name']}: {str(api_error)}")
+                    error_msg = str(api_error)
+                    st.error(f"⚠️ API Error for {file_info['original_name']}: {error_msg}")
+                    
+                    # Show more detailed error info
+                    if "timeout" in error_msg.lower():
+                        st.warning("API call timed out. The server might be overloaded. Try again in a moment.")
+                    elif "404" in error_msg:
+                        st.error("Model not found. Please check your model selection in settings.")
+                    elif "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
+                        st.error("API key doesn't have permission. Check your Gemini API key settings.")
+                    
                     # Use fallback
                     result = {
                         'proposed_filename': f'photo-{idx+1}',
-                        'reasons': f'API error: {str(api_error)}',
+                        'reasons': f'API error: {error_msg[:100]}',
                         'semantic_tags': ['photo'],
                         'confidence': 0.1
                     }

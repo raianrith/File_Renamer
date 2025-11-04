@@ -119,16 +119,42 @@ Return JSON as specified."""
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
             
             # Call Gemini API with timeout
+            import time as time_module
+            api_start = time_module.time()
+            
             try:
+                # Generate content with safety settings
                 response = self.model.generate_content(
                     [full_prompt, image],
-                    request_options={'timeout': 30}  # 30 second timeout
+                    generation_config={
+                        'temperature': 0.7,
+                        'top_p': 0.95,
+                        'top_k': 40,
+                        'max_output_tokens': 500,
+                    },
+                    safety_settings=[
+                        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                    ]
                 )
+                
+                api_elapsed = time_module.time() - api_start
+                print(f"API call took {api_elapsed:.2f}s")
+                
+                # Check if response was blocked
+                if not response.text:
+                    if hasattr(response, 'prompt_feedback'):
+                        print(f"Response blocked: {response.prompt_feedback}")
+                    raise Exception("Response was blocked or empty. Try a different image.")
                 
                 # Extract text from response
                 response_text = response.text.strip()
+                print(f"Got response: {response_text[:100]}...")
+                
             except Exception as api_error:
-                print(f"API Error: {api_error}")
+                print(f"API Error after {time_module.time() - api_start:.2f}s: {api_error}")
                 raise
             
             # Parse JSON
