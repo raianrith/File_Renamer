@@ -186,9 +186,12 @@ def analyze_images(
     """
     # Initialize AI client
     try:
+        st.info(f"🔧 Initializing {settings['model']}...")
         client = GeminiClient(api_key, model_name=settings['model'])
+        st.success(f"✅ AI client initialized successfully")
     except Exception as e:
-        st.error(f"Failed to initialize Gemini client: {e}")
+        st.error(f"❌ Failed to initialize Gemini client: {e}")
+        st.error("Please check your API key and model selection")
         return
     
     # Calculate and display cost estimate
@@ -273,18 +276,29 @@ def analyze_images(
                 latency = 0.0
                 status_text.text(f"✅ Using cached result for {file_info['original_name']}")
             else:
-                # Call AI
-                ocr_tokens_str = format_tokens_for_prompt(ocr_tokens)
-                result, latency = client.analyze_image(
-                    file_info['bytes'],
-                    casing=settings['casing'],
-                    max_len=settings['max_length'],
-                    ocr_tokens=ocr_tokens_str,
-                    threshold=settings['confidence_threshold']
-                )
-                
-                # Cache result
-                cache_result(image_hash, settings, result)
+                # Call AI with error handling
+                try:
+                    ocr_tokens_str = format_tokens_for_prompt(ocr_tokens)
+                    result, latency = client.analyze_image(
+                        file_info['bytes'],
+                        casing=settings['casing'],
+                        max_len=settings['max_length'],
+                        ocr_tokens=ocr_tokens_str,
+                        threshold=settings['confidence_threshold']
+                    )
+                    
+                    # Cache result
+                    cache_result(image_hash, settings, result)
+                except Exception as api_error:
+                    st.error(f"⚠️ API Error for {file_info['original_name']}: {str(api_error)}")
+                    # Use fallback
+                    result = {
+                        'proposed_filename': f'photo-{idx+1}',
+                        'reasons': f'API error: {str(api_error)}',
+                        'semantic_tags': ['photo'],
+                        'confidence': 0.1
+                    }
+                    latency = 0.0
             
             # Process result
             proposed_name = result['proposed_filename']

@@ -118,11 +118,18 @@ Return JSON as specified."""
             # Combine prompts
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
             
-            # Call Gemini API
-            response = self.model.generate_content([full_prompt, image])
-            
-            # Extract text from response
-            response_text = response.text.strip()
+            # Call Gemini API with timeout
+            try:
+                response = self.model.generate_content(
+                    [full_prompt, image],
+                    request_options={'timeout': 30}  # 30 second timeout
+                )
+                
+                # Extract text from response
+                response_text = response.text.strip()
+            except Exception as api_error:
+                print(f"API Error: {api_error}")
+                raise
             
             # Parse JSON
             result = self._parse_json_response(response_text)
