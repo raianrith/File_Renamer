@@ -146,14 +146,28 @@ def estimate_cost(num_images: int, model_name: str) -> Dict[str, Any]:
         'gemini-pro-latest': 0.00025,
     }
     
+    # Average processing time per image (seconds)
+    time_per_image = {
+        'gemini-2.5-flash': 2.5,      # ~2.5 seconds per image
+        'gemini-2.5-pro': 4.0,        # ~4 seconds per image
+        'gemini-2.0-flash': 2.5,
+        'gemini-flash-latest': 2.5,
+        'gemini-pro-latest': 4.0,
+    }
+    
     rate = cost_per_image.get(model_name, 0.00001)
     estimated_cost = num_images * rate
+    
+    avg_time = time_per_image.get(model_name, 3.0)
+    estimated_time = num_images * avg_time
     
     return {
         'total_images': num_images,
         'cost_per_image': rate,
         'estimated_cost': estimated_cost,
-        'credits_used': num_images  # Simplified credit tracking
+        'credits_used': num_images,  # Simplified credit tracking
+        'estimated_time': estimated_time,  # in seconds
+        'time_per_image': avg_time
     }
 
 
@@ -181,6 +195,15 @@ def analyze_images(
     total_files = len(files_data)
     cost_info = estimate_cost(total_files, settings['model'])
     
+    # Format estimated time
+    est_time = cost_info['estimated_time']
+    if est_time < 60:
+        time_str = f"{est_time:.0f} seconds"
+    else:
+        minutes = int(est_time // 60)
+        seconds = int(est_time % 60)
+        time_str = f"{minutes}m {seconds}s"
+    
     # Show cost estimate upfront
     st.info(f"""
     📊 **Processing Summary**
@@ -188,18 +211,44 @@ def analyze_images(
     - Model: {settings['model']}
     - Estimated cost: ${cost_info['estimated_cost']:.6f}
     - Credits: ~{cost_info['credits_used']} API calls
+    - Estimated time: ~{time_str}
     """)
     
     # Progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
     cost_text = st.empty()
+    time_text = st.empty()
+    
+    import time
+    start_time = time.time()
     
     for idx, file_info in enumerate(files_data):
+        # Calculate elapsed and remaining time
+        elapsed = time.time() - start_time
+        if idx > 0:
+            avg_time_per_image = elapsed / idx
+            remaining_images = total_files - idx
+            estimated_remaining = avg_time_per_image * remaining_images
+            
+            # Format times
+            elapsed_str = f"{int(elapsed)}s"
+            if elapsed >= 60:
+                elapsed_str = f"{int(elapsed // 60)}m {int(elapsed % 60)}s"
+            
+            remaining_str = f"{int(estimated_remaining)}s"
+            if estimated_remaining >= 60:
+                remaining_str = f"{int(estimated_remaining // 60)}m {int(estimated_remaining % 60)}s"
+            
+            time_info = f"⏱️ Elapsed: {elapsed_str} | Remaining: ~{remaining_str}"
+        else:
+            time_info = f"⏱️ Starting..."
+        
         # Update progress with cost tracking
         current_cost = (idx + 1) * cost_info['cost_per_image']
         status_text.text(f"Processing {idx + 1}/{total_files}: {file_info['original_name']}")
         cost_text.text(f"💰 Current cost: ${current_cost:.6f} | Credits used: {idx + 1}")
+        time_text.text(time_info)
         
         try:
             # Extract EXIF data
@@ -273,10 +322,22 @@ def analyze_images(
     for idx, file_info in enumerate(files_data):
         file_info['new_name'] = unique_names[idx]
     
-    # Show final cost
+    # Calculate final stats
+    total_time = time.time() - start_time
     final_cost = total_files * cost_info['cost_per_image']
+    
+    # Format final time
+    if total_time < 60:
+        total_time_str = f"{total_time:.1f} seconds"
+    else:
+        minutes = int(total_time // 60)
+        seconds = int(total_time % 60)
+        total_time_str = f"{minutes}m {seconds}s"
+    
+    # Show final summary
     status_text.text("✅ Processing complete!")
-    cost_text.success(f"✅ Total cost: ${final_cost:.6f} | Total credits: {total_files} API calls")
+    cost_text.success(f"💰 Total cost: ${final_cost:.6f} | Total credits: {total_files} API calls")
+    time_text.success(f"⏱️ Completed in: {total_time_str} | Avg: {total_time/total_files:.1f}s per image")
     st.session_state.processing_complete = True
 
 
