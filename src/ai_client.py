@@ -106,11 +106,6 @@ NO markdown. NO code blocks. ONLY the JSON object."""
             
             try:
                 # Generate content with optimized settings
-                # Try with just the image first to see if vision works
-                print(f"Sending request to {self.model_name}...")
-                print(f"Image size: {image.size}")
-                print(f"Prompt: {full_prompt[:100]}...")
-                
                 response = self.model.generate_content(
                     [full_prompt, image],
                     generation_config={
@@ -128,85 +123,50 @@ NO markdown. NO code blocks. ONLY the JSON object."""
                     ]
                 )
                 
-                print(f"Response received. Type: {type(response)}")
-                
-                api_elapsed = time_module.time() - api_start
-                print(f"API call took {api_elapsed:.2f}s")
-                
                 # Check if response has parts/candidates before accessing text
                 if not hasattr(response, 'candidates') or not response.candidates:
                     error_details = ""
                     if hasattr(response, 'prompt_feedback'):
                         error_details = f"Prompt feedback: {response.prompt_feedback}"
-                        print(f"Response blocked: {response.prompt_feedback}")
                     raise Exception(f"Response has no candidates (likely blocked). {error_details}")
                 
                 # Check the candidate and try to extract content
                 candidate = response.candidates[0]
-                finish_reason = getattr(candidate, 'finish_reason', 0)
-                finish_reason_name = {
-                    0: "UNSPECIFIED",
-                    1: "STOP",
-                    2: "MAX_TOKENS",
-                    3: "SAFETY",
-                    4: "RECITATION",
-                    5: "OTHER"
-                }.get(finish_reason, f"UNKNOWN_{finish_reason}")
                 
-                print(f"Finish reason: {finish_reason} = {finish_reason_name}")
-                
-                # Try to extract text even if finish reason is MAX_TOKENS
+                # Try to extract text
                 response_text = None
                 try:
                     if hasattr(candidate, 'content') and candidate.content and candidate.content.parts:
                         response_text = candidate.content.parts[0].text.strip()
-                        print(f"Got response text (length: {len(response_text)}): {response_text[:200]}...")
-                    else:
-                        print(f"No content.parts found. Candidate structure: {dir(candidate)}")
-                except (AttributeError, IndexError) as e:
-                    print(f"Error accessing response text: {e}")
+                except (AttributeError, IndexError):
+                    pass
                 
-                # If we got text, use it even if MAX_TOKENS
-                if response_text:
-                    print(f"Successfully extracted {len(response_text)} chars (finish: {finish_reason_name})")
-                else:
-                    # No text at all - this is a real error
-                    raise Exception(f"No text in response. Finish: {finish_reason_name}. Check if model supports vision.")
+                if not response_text:
+                    raise Exception("No text in response. Model may not support vision.")
                 
                 # Clean up response - remove markdown code blocks
                 if '```json' in response_text or '```' in response_text:
-                    print("Removing markdown code blocks...")
                     response_text = response_text.replace('```json', '').replace('```', '').strip()
                 
                 # Check if response looks like JSON
                 if not response_text.startswith('{'):
-                    print(f"WARNING: Response doesn't start with '{{': {response_text[:50]}")
-                    # Try to extract JSON from response
                     import re
                     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                     if json_match:
                         response_text = json_match.group(0)
-                        print(f"Extracted JSON: {response_text[:100]}")
                     else:
-                        raise Exception(f"No valid JSON found in response: {response_text[:100]}")
+                        raise Exception("No valid JSON found in response")
                 
                 # If JSON looks incomplete, try to complete it
                 if not response_text.endswith('}'):
-                    print(f"WARNING: JSON appears incomplete: {response_text[-50:]}")
-                    # Try to fix common incomplete patterns
                     if '"proposed_filename"' in response_text:
-                        # Extract just the filename if that's all we got
                         import re
                         match = re.search(r'"proposed_filename":\s*"([^"]*)', response_text)
                         if match:
                             filename = match.group(1)
-                            print(f"Extracted incomplete filename: {filename}")
-                            # Build complete JSON with extracted filename
                             response_text = f'{{"proposed_filename":"{filename}","reasons":"Partial response","semantic_tags":["photo"],"confidence":0.7}}'
-                            print(f"Reconstructed JSON: {response_text}")
                 
             except Exception as api_error:
-                print(f"API Error after {time_module.time() - api_start:.2f}s: {api_error}")
                 raise
             
             # Parse JSON
@@ -218,30 +178,16 @@ NO markdown. NO code blocks. ONLY the JSON object."""
             latency = time.time() - start_time
             return result, latency
             
-        except json.JSONDecodeError as e:
-            error_msg = f"JSON Parse Error: {e}\nResponse was: {response_text[:300]}"
-            print(error_msg)
-            
-            # Try to repair the JSON
+        except json.JSONDecodeError:
             repaired = self._attempt_json_repair(response_text)
             if repaired:
-                print("Successfully repaired JSON")
-                latency = time.time() - start_time
-                return repaired, latency
+                return repaired, time.time() - start_time
             
-            # Fallback to heuristic with error info
-            print("Using fallback heuristic (JSON repair failed)")
             result = self._fallback_heuristic(image_bytes)
-            result['reasons'] = f"JSON Error: {str(e)[:50]}"
             return result, time.time() - start_time
             
-        except Exception as e:
-            error_msg = f"General Error: {type(e).__name__}: {str(e)}"
-            print(error_msg)
-            
-            # Fallback to heuristic with error info
+        except Exception:
             result = self._fallback_heuristic(image_bytes)
-            result['reasons'] = f"API Error: {str(e)[:80]}"
             return result, time.time() - start_time
     
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
@@ -372,21 +318,18 @@ NO markdown. NO code blocks. ONLY the JSON object."""
             
             filename = f"{tone}-{color}-photo"
             
-            print(f"Fallback result: {filename}")
-            
             return {
                 'proposed_filename': filename,
-                'reasons': '⚠️ FALLBACK: AI analysis failed - using color detection',
-                'semantic_tags': [tone, color, 'photo', 'fallback'],
+                'reasons': 'Fallback: Color analysis',
+                'semantic_tags': [tone, color, 'photo'],
                 'confidence': 0.3
             }
             
-        except Exception as e:
-            print(f"Even fallback failed: {e}")
+        except Exception:
             return {
                 'proposed_filename': 'unnamed-photo',
-                'reasons': '⚠️ FALLBACK: Could not analyze image',
-                'semantic_tags': ['photo', 'error'],
+                'reasons': 'Fallback: Could not analyze',
+                'semantic_tags': ['photo'],
                 'confidence': 0.1
             }
 

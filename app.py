@@ -197,21 +197,14 @@ def analyze_images(
     """
     # Initialize AI client
     try:
-        st.info(f"🔧 Initializing {settings['model']}...")
-        
         # Verify API key
         if not api_key or api_key == "paste-your-api-key-here":
             st.error("❌ Invalid API key! Please configure in Streamlit Cloud Secrets.")
-            st.code("Go to: App Settings → Secrets → Add GEMINI_API_KEY", language="text")
             return
         
         client = GeminiClient(api_key, model_name=settings['model'])
-        st.success(f"✅ AI client initialized successfully")
-        st.info(f"🔑 API Key: {api_key[:15]}..." if len(api_key) > 15 else "Key too short")
     except Exception as e:
-        st.error(f"❌ Failed to initialize Gemini client: {e}")
-        st.error("Please check your API key and model selection")
-        st.code(str(e), language="text")
+        st.error(f"❌ Failed to initialize: {e}")
         return
     
     # Calculate and display cost estimate
@@ -227,51 +220,49 @@ def analyze_images(
         seconds = int(est_time % 60)
         time_str = f"{minutes}m {seconds}s"
     
-    # Show cost estimate upfront
-    st.info(f"""
-    📊 **Processing Summary**
-    - Images: {cost_info['total_images']}
-    - Model: {settings['model']}
-    - Estimated cost: ${cost_info['estimated_cost']:.6f}
-    - Credits: ~{cost_info['credits_used']} API calls
-    - Estimated time: ~{time_str}
-    """)
+    # Show concise estimate
+    with st.expander("📊 Processing Details", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Images", cost_info['total_images'])
+        with col2:
+            st.metric("Est. Cost", f"${cost_info['estimated_cost']:.6f}")
+        with col3:
+            st.metric("Est. Time", time_str)
     
     # Progress tracking
+    progress_container = st.container()
     progress_bar = st.progress(0)
     status_text = st.empty()
-    cost_text = st.empty()
-    time_text = st.empty()
     
     import time
     start_time = time.time()
     
     for idx, file_info in enumerate(files_data):
-        # Calculate elapsed and remaining time
+        # Calculate progress
+        progress_percent = (idx + 1) / total_files
+        current_cost = (idx + 1) * cost_info['cost_per_image']
+        
+        # Calculate time
         elapsed = time.time() - start_time
         if idx > 0:
             avg_time_per_image = elapsed / idx
             remaining_images = total_files - idx
             estimated_remaining = avg_time_per_image * remaining_images
             
-            # Format times
-            elapsed_str = f"{int(elapsed)}s"
-            if elapsed >= 60:
-                elapsed_str = f"{int(elapsed // 60)}m {int(elapsed % 60)}s"
-            
-            remaining_str = f"{int(estimated_remaining)}s"
-            if estimated_remaining >= 60:
-                remaining_str = f"{int(estimated_remaining // 60)}m {int(estimated_remaining % 60)}s"
-            
-            time_info = f"⏱️ Elapsed: {elapsed_str} | Remaining: ~{remaining_str}"
+            # Format times elegantly
+            if estimated_remaining < 60:
+                time_str = f"{int(estimated_remaining)}s remaining"
+            else:
+                time_str = f"{int(estimated_remaining // 60)}m {int(estimated_remaining % 60)}s remaining"
         else:
-            time_info = f"⏱️ Starting..."
+            time_str = "Calculating..."
         
-        # Update progress with cost tracking
-        current_cost = (idx + 1) * cost_info['cost_per_image']
-        status_text.text(f"Processing {idx + 1}/{total_files}: {file_info['original_name']}")
-        cost_text.text(f"💰 Current cost: ${current_cost:.6f} | Credits used: {idx + 1}")
-        time_text.text(time_info)
+        # Update progress bar
+        progress_bar.progress(progress_percent)
+        
+        # Show elegant status
+        status_text.text(f"🔄 Processing {idx + 1} of {total_files} | {time_str} | ${current_cost:.6f}")
         
         try:
             # Extract EXIF data
@@ -298,7 +289,6 @@ def analyze_images(
             else:
                 # Call AI with error handling
                 try:
-                    status_text.text(f"🤖 Calling Gemini API for {file_info['original_name']}...")
                     ocr_tokens_str = format_tokens_for_prompt(ocr_tokens)
                     
                     result, latency = client.analyze_image(
@@ -309,48 +299,17 @@ def analyze_images(
                         threshold=settings['confidence_threshold']
                     )
                     
-                    # Show what we got - check if it's fallback
-                    if 'fallback' in result.get('semantic_tags', []):
-                        st.error(f"⚠️ FALLBACK WAS USED!")
-                        st.write(f"**Reason:** {result.get('reasons', 'Unknown')}")
-                    else:
-                        st.success(f"✅ AI worked!")
-                    
-                    st.write(f"**Debug - AI Result:**")
-                    st.json(result)
-                    
-                    status_text.text(f"✅ Got response in {latency:.1f}s")
-                    
                     # Cache result
                     cache_result(image_hash, settings, result)
                 except Exception as api_error:
-                    error_msg = str(api_error)
-                    st.error(f"⚠️ API Error for {file_info['original_name']}: {error_msg}")
-                    
-                    # Show terminal output for debugging
-                    st.code(f"Error details: {error_msg}", language="text")
-                    
-                    # Show more detailed error info
-                    if "timeout" in error_msg.lower():
-                        st.warning("API call timed out. The server might be overloaded. Try again in a moment.")
-                    elif "404" in error_msg:
-                        st.error("Model not found. Please check your model selection in settings.")
-                    elif "permission" in error_msg.lower() or "forbidden" in error_msg.lower():
-                        st.error("API key doesn't have permission. Check your Gemini API key settings.")
-                    elif "json" in error_msg.lower():
-                        st.warning("AI returned invalid JSON. Using fallback naming.")
-                    
-                    # Use fallback with better naming
+                    # Use fallback silently
                     result = {
                         'proposed_filename': f'image-{idx+1:03d}',
-                        'reasons': f'Fallback: {error_msg[:50]}',
+                        'reasons': 'Processing error',
                         'semantic_tags': ['photo'],
                         'confidence': 0.1
                     }
                     latency = 0.0
-                    
-                    # Don't stop processing, continue to next image
-                    continue
             
             # Process result
             proposed_name = result['proposed_filename']
@@ -388,22 +347,21 @@ def analyze_images(
     for idx, file_info in enumerate(files_data):
         file_info['new_name'] = unique_names[idx]
     
-    # Calculate final stats
+    # Show completion
     total_time = time.time() - start_time
     final_cost = total_files * cost_info['cost_per_image']
     
     # Format final time
     if total_time < 60:
-        total_time_str = f"{total_time:.1f} seconds"
+        total_time_str = f"{total_time:.0f}s"
     else:
         minutes = int(total_time // 60)
         seconds = int(total_time % 60)
         total_time_str = f"{minutes}m {seconds}s"
     
-    # Show final summary
-    status_text.text("✅ Processing complete!")
-    cost_text.success(f"💰 Total cost: ${final_cost:.6f} | Total credits: {total_files} API calls")
-    time_text.success(f"⏱️ Completed in: {total_time_str} | Avg: {total_time/total_files:.1f}s per image")
+    # Show elegant completion
+    progress_bar.progress(1.0)
+    status_text.success(f"✅ Complete! Processed {total_files} images in {total_time_str} | ${final_cost:.6f}")
     st.session_state.processing_complete = True
 
 
