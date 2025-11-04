@@ -10,7 +10,7 @@ import io
 
 def render_header():
     """Render the app header."""
-    st.title("📸 Smart JPEG Renamer")
+    st.title("📸 Weidert Internal AI JPEG File Renamer")
     st.markdown("""
     **Intelligent batch renaming powered by Google Gemini Vision**
     
