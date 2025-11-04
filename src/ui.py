@@ -191,9 +191,22 @@ def render_preview_grid(files_data: List[Dict[str, Any]], cols: int = 4):
                         st.image(image, use_container_width=True)
                         st.caption(file_info['original_name'])
                         
-                        # Button to show details
-                        if st.button(f"ℹ️", key=f"info_{idx}"):
-                            st.session_state[f'show_modal_{idx}'] = True
+                        # Button to show details in expander
+                        with st.expander(f"ℹ️ Details", expanded=False):
+                            # Show image info
+                            st.write(f"**Filename:** {file_info['original_name']}")
+                            st.write(f"**Size:** {len(file_info['bytes']) / 1024:.1f} KB")
+                            
+                            # Show EXIF if available
+                            if 'exif_data' in file_info and file_info['exif_data']:
+                                from src.exif_utils import format_exif_summary
+                                exif_summary = format_exif_summary(file_info['exif_data'])
+                                st.text(exif_summary)
+                            else:
+                                st.text("No EXIF data available")
+                            
+                            # Show larger preview
+                            st.image(image, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error: {e}")
 

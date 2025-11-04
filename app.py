@@ -461,11 +461,24 @@ def main():
         settings['include_ocr'] = False
     
     # File uploader
+    # Use a key that can be reset
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+    
     uploaded_files = render_file_uploader()
     
-    # Process uploaded files
-    if uploaded_files and not st.session_state.files_data:
-        st.session_state.files_data = process_uploaded_files(uploaded_files)
+    # Process uploaded files (only if we don't already have files or if new files uploaded)
+    if uploaded_files:
+        # Check if these are new files (different count or different names)
+        current_names = [f.name for f in uploaded_files]
+        existing_names = [f['original_name'] for f in st.session_state.files_data] if st.session_state.files_data else []
+        
+        if current_names != existing_names:
+            st.session_state.files_data = process_uploaded_files(uploaded_files)
+            st.session_state.processing_complete = False
+    elif not uploaded_files and st.session_state.files_data:
+        # Files were cleared, reset state
+        st.session_state.files_data = []
         st.session_state.processing_complete = False
     
     # Preview grid
@@ -520,8 +533,12 @@ def main():
             # Reset button
             st.divider()
             if st.button("🔄 Start Over", use_container_width=False):
+                # Clear all session state
                 st.session_state.files_data = []
                 st.session_state.processing_complete = False
+                # Clear any cached data
+                if 'result_cache' in st.session_state:
+                    st.session_state.result_cache = {}
                 st.rerun()
     
     # Footer
