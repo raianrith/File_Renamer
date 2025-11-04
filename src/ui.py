@@ -128,7 +128,6 @@ def render_file_uploader(max_files: int = 200, max_size_mb: int = 50) -> List[An
     st.subheader("📁 Upload Images")
     
     # Use dynamic key for complete reset capability
-    import streamlit as st
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
     
