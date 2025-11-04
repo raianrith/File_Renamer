@@ -140,15 +140,28 @@ Rules:
                 api_elapsed = time_module.time() - api_start
                 print(f"API call took {api_elapsed:.2f}s")
                 
-                # Check if response was blocked
-                if not response.text:
+                # Check if response has parts/candidates before accessing text
+                if not hasattr(response, 'candidates') or not response.candidates:
+                    error_details = ""
                     if hasattr(response, 'prompt_feedback'):
+                        error_details = f"Prompt feedback: {response.prompt_feedback}"
                         print(f"Response blocked: {response.prompt_feedback}")
-                    raise Exception("Response was blocked or empty. Try a different image.")
+                    raise Exception(f"Response has no candidates (likely blocked). {error_details}")
                 
-                # Extract text from response
-                response_text = response.text.strip()
-                print(f"Got response: {response_text[:200]}...")
+                # Check if the candidate has content
+                candidate = response.candidates[0]
+                if not hasattr(candidate, 'content') or not candidate.content.parts:
+                    if hasattr(candidate, 'finish_reason'):
+                        print(f"Finish reason: {candidate.finish_reason}")
+                    raise Exception(f"Response has no content. Finish reason: {getattr(candidate, 'finish_reason', 'unknown')}")
+                
+                # Now safely extract text
+                try:
+                    response_text = candidate.content.parts[0].text.strip()
+                    print(f"Got response: {response_text[:200]}...")
+                except (AttributeError, IndexError) as e:
+                    print(f"Error accessing response text: {e}")
+                    raise Exception(f"Could not extract text from response: {e}")
                 
                 # Check if response looks like JSON
                 if not response_text.startswith('{'):
