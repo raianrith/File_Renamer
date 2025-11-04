@@ -32,9 +32,11 @@ class GeminiClient:
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the model."""
-        return """Describe this image in a short kebab-case filename (max 60 chars). Return this JSON:
-{"proposed_filename":"your-description-here","reasons":"brief","semantic_tags":["tag1","tag2"],"confidence":0.8}
-NO markdown. NO code blocks. ONLY the JSON object."""
+        return """Analyze this image and create a descriptive kebab-case filename (max 60 chars).
+For screenshots/diagrams: describe what they show (e.g., "chat-conversation-code-example").
+For photos: describe the subject (e.g., "cat-portrait-dark-background").
+Return ONLY this JSON (no markdown):
+{"proposed_filename":"descriptive-name","reasons":"brief description","semantic_tags":["tag1","tag2"],"confidence":0.8}"""
     
     def _create_user_prompt(
         self,
@@ -59,8 +61,8 @@ NO markdown. NO code blocks. ONLY the JSON object."""
         return ""
     
     @retry(
-        stop=stop_after_attempt(2),  # Reduced from 3 to 2 attempts
-        wait=wait_exponential(multiplier=1, min=1, max=5),  # Faster retry
+        stop=stop_after_attempt(3),  # Increased retries for reliability
+        wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((Exception,))
     )
     def analyze_image(
@@ -109,10 +111,10 @@ NO markdown. NO code blocks. ONLY the JSON object."""
                 response = self.model.generate_content(
                     [full_prompt, image],
                     generation_config={
-                        'temperature': 0.1,
-                        'top_p': 0.8,
-                        'top_k': 10,
-                        'max_output_tokens': 500,  # Significantly increased
+                        'temperature': 0.2,  # Slightly higher for more creativity
+                        'top_p': 0.9,
+                        'top_k': 20,
+                        'max_output_tokens': 800,  # Increased for text-heavy images
                         'candidate_count': 1,
                     },
                     safety_settings=[
