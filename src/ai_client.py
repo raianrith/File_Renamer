@@ -32,21 +32,9 @@ class GeminiClient:
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the model."""
-        return """Analyze this image and return a descriptive filename in JSON format.
-
-Return ONLY this JSON structure (no markdown, no extra text):
-{
-  "proposed_filename": "descriptive-kebab-case-name",
-  "reasons": "Brief one-sentence description",
-  "semantic_tags": ["tag1", "tag2", "tag3"],
-  "confidence": 0.85
-}
-
-Rules:
-- proposed_filename: descriptive, kebab-case, no extension, max 60 chars
-- Be specific (e.g., "golden-retriever-puppy" not just "dog")
-- confidence: 0.0 to 1.0 based on image clarity
-- Return ONLY the JSON, nothing else"""
+        return """Return ONLY valid JSON with a filename for this image:
+{"proposed_filename":"short-descriptive-name","reasons":"brief","semantic_tags":["tag1","tag2"],"confidence":0.8}
+Be specific. Kebab-case. Max 60 chars. No extension. Return ONLY JSON."""
     
     def _create_user_prompt(
         self,
@@ -67,7 +55,8 @@ Rules:
         Returns:
             Formatted prompt string
         """
-        return f"Analyze this image and return the JSON format shown above. Target style: {casing}. Max length: {max_len} chars."
+        # Removed - combining into one simple prompt instead
+        return ""
     
     @retry(
         stop=stop_after_attempt(2),  # Reduced from 3 to 2 attempts
@@ -108,12 +97,8 @@ Rules:
                 new_size = tuple(int(dim * ratio) for dim in image.size)
                 image = image.resize(new_size, Image.Resampling.LANCZOS)
             
-            # Create prompts
-            system_prompt = self._create_system_prompt()
-            user_prompt = self._create_user_prompt(casing, max_len, ocr_tokens, threshold)
-            
-            # Combine prompts
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            # Create simple, direct prompt
+            full_prompt = self._create_system_prompt()
             
             # Call Gemini API with timeout
             import time as time_module
@@ -124,10 +109,11 @@ Rules:
                 response = self.model.generate_content(
                     [full_prompt, image],
                     generation_config={
-                        'temperature': 0.3,  # Lower for faster, more consistent results
+                        'temperature': 0.1,  # Very low for consistent JSON
                         'top_p': 0.8,
-                        'top_k': 20,
-                        'max_output_tokens': 150,  # Reduced since we only need short JSON
+                        'top_k': 10,
+                        'max_output_tokens': 200,  # Increased to avoid cutting off JSON
+                        'candidate_count': 1,
                     },
                     safety_settings=[
                         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -151,9 +137,18 @@ Rules:
                 # Check if the candidate has content
                 candidate = response.candidates[0]
                 if not hasattr(candidate, 'content') or not candidate.content.parts:
-                    if hasattr(candidate, 'finish_reason'):
-                        print(f"Finish reason: {candidate.finish_reason}")
-                    raise Exception(f"Response has no content. Finish reason: {getattr(candidate, 'finish_reason', 'unknown')}")
+                    finish_reason = getattr(candidate, 'finish_reason', 'unknown')
+                    finish_reason_name = {
+                        0: "UNSPECIFIED",
+                        1: "STOP (normal)",
+                        2: "MAX_TOKENS (hit limit)",
+                        3: "SAFETY (blocked)",
+                        4: "RECITATION (copyright)",
+                        5: "OTHER"
+                    }.get(finish_reason, f"UNKNOWN ({finish_reason})")
+                    
+                    print(f"Finish reason: {finish_reason} = {finish_reason_name}")
+                    raise Exception(f"Response has no content. Finish reason: {finish_reason_name}")
                 
                 # Now safely extract text
                 try:
