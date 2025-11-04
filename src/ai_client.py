@@ -176,8 +176,8 @@ Rules:
             return result, latency
             
         except json.JSONDecodeError as e:
-            print(f"JSON Parse Error: {e}")
-            print(f"Response was: {response_text[:300]}")
+            error_msg = f"JSON Parse Error: {e}\nResponse was: {response_text[:300]}"
+            print(error_msg)
             
             # Try to repair the JSON
             repaired = self._attempt_json_repair(response_text)
@@ -186,14 +186,20 @@ Rules:
                 latency = time.time() - start_time
                 return repaired, latency
             
-            # Fallback to heuristic
+            # Fallback to heuristic with error info
             print("Using fallback heuristic (JSON repair failed)")
-            return self._fallback_heuristic(image_bytes), time.time() - start_time
+            result = self._fallback_heuristic(image_bytes)
+            result['reasons'] = f"JSON Error: {str(e)[:50]}"
+            return result, time.time() - start_time
             
         except Exception as e:
-            print(f"General Error: {e}")
-            # Fallback to heuristic
-            return self._fallback_heuristic(image_bytes), time.time() - start_time
+            error_msg = f"General Error: {type(e).__name__}: {str(e)}"
+            print(error_msg)
+            
+            # Fallback to heuristic with error info
+            result = self._fallback_heuristic(image_bytes)
+            result['reasons'] = f"API Error: {str(e)[:80]}"
+            return result, time.time() - start_time
     
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
         """

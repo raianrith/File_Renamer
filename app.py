@@ -198,11 +198,20 @@ def analyze_images(
     # Initialize AI client
     try:
         st.info(f"🔧 Initializing {settings['model']}...")
+        
+        # Verify API key
+        if not api_key or api_key == "paste-your-api-key-here":
+            st.error("❌ Invalid API key! Please configure in Streamlit Cloud Secrets.")
+            st.code("Go to: App Settings → Secrets → Add GEMINI_API_KEY", language="text")
+            return
+        
         client = GeminiClient(api_key, model_name=settings['model'])
         st.success(f"✅ AI client initialized successfully")
+        st.info(f"🔑 API Key: {api_key[:15]}..." if len(api_key) > 15 else "Key too short")
     except Exception as e:
         st.error(f"❌ Failed to initialize Gemini client: {e}")
         st.error("Please check your API key and model selection")
+        st.code(str(e), language="text")
         return
     
     # Calculate and display cost estimate
@@ -300,7 +309,13 @@ def analyze_images(
                         threshold=settings['confidence_threshold']
                     )
                     
-                    # Show what we got
+                    # Show what we got - check if it's fallback
+                    if 'fallback' in result.get('semantic_tags', []):
+                        st.error(f"⚠️ FALLBACK WAS USED!")
+                        st.write(f"**Reason:** {result.get('reasons', 'Unknown')}")
+                    else:
+                        st.success(f"✅ AI worked!")
+                    
                     st.write(f"**Debug - AI Result:**")
                     st.json(result)
                     
