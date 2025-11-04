@@ -10,11 +10,13 @@ import io
 
 def render_header():
     """Render the app header."""
-    st.title("📸 Weidert Internal AI JPEG File Renamer")
+    st.title("📸 Weidert AI File Renamer v2")
     st.markdown("""
     **Intelligent batch renaming powered by Google Gemini Vision**
     
-    Upload your JPEG images, let AI analyze them, review suggestions, and download renamed files.
+    **v2 Features:** Supports JPEG, PNG, HEIC, SVG, and PDF files!
+    
+    Upload your images or documents, let AI analyze them, review suggestions, and download renamed files.
     [📖 View README](https://github.com/raianrith/File_Renamer/blob/main/README.md)
     """)
     st.divider()
@@ -125,17 +127,17 @@ def render_file_uploader(max_files: int = 200, max_size_mb: int = 50) -> List[An
     Returns:
         List of uploaded files
     """
-    st.subheader("📁 Upload Images")
+    st.subheader("📁 Upload Files")
     
     # Use dynamic key for complete reset capability
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
     
     uploaded_files = st.file_uploader(
-        f"Choose JPEG files (max {max_files} files, {max_size_mb}MB each)",
-        type=['jpg', 'jpeg'],
+        f"Choose image or PDF files (max {max_files} files, {max_size_mb}MB each)",
+        type=['jpg', 'jpeg', 'png', 'heic', 'heif', 'svg', 'pdf', 'gif', 'webp', 'bmp'],
         accept_multiple_files=True,
-        help="Upload one or more JPEG images",
+        help="Upload JPEG, PNG, HEIC, SVG, PDF, or other image formats",
         key=f"file_uploader_{st.session_state.uploader_key}"
     )
     

@@ -43,6 +43,7 @@ try:
         create_session_log,
         validate_files_for_export
     )
+    from src.format_converter import FormatConverter
 except ImportError as e:
     st.error(f"Import Error: {e}")
     st.error("Please make sure all files are properly uploaded to GitHub")
@@ -103,6 +104,7 @@ def get_api_key() -> str:
 def process_uploaded_files(uploaded_files: List[Any]) -> List[Dict[str, Any]]:
     """
     Process uploaded files and prepare data structures.
+    Converts all formats to PIL Images for AI processing.
     
     Args:
         uploaded_files: List of Streamlit UploadedFile objects
@@ -114,25 +116,44 @@ def process_uploaded_files(uploaded_files: List[Any]) -> List[Dict[str, Any]]:
     
     for uploaded_file in uploaded_files:
         file_bytes = uploaded_file.read()
-        
-        # Extract extension
         original_name = uploaded_file.name
-        extension = os.path.splitext(original_name)[1]
         
-        files_data.append({
-            'original_name': original_name,
-            'bytes': file_bytes,
-            'extension': extension,
-            'new_name': '',
-            'confidence': 0.0,
-            'tags': [],
-            'reasons': '',
-            'exif_date': None,
-            'ocr_tokens': [],
-            'latency': 0.0,
-            'errors': [],
-            'include': True
-        })
+        try:
+            # Convert file to PIL Image (handles HEIC, SVG, PDF, etc.)
+            pil_image, original_format = FormatConverter.convert_to_pil(file_bytes, original_name)
+            
+            # Determine output format
+            output_format = FormatConverter.should_convert_output_format(original_format)
+            
+            # Convert PIL image back to bytes for AI processing
+            image_bytes = FormatConverter.convert_pil_to_bytes(pil_image, 'JPEG')
+            
+            # Determine output extension
+            output_ext = f".{output_format}"
+            
+            files_data.append({
+                'original_name': original_name,
+                'bytes': image_bytes,  # Converted to JPEG for AI
+                'original_bytes': file_bytes,  # Keep original for reference
+                'extension': output_ext,
+                'original_format': original_format,
+                'output_format': output_format,
+                'pil_image': pil_image,  # Store PIL image for later use
+                'new_name': '',
+                'confidence': 0.0,
+                'tags': [],
+                'reasons': '',
+                'exif_date': None,
+                'ocr_tokens': [],
+                'latency': 0.0,
+                'errors': [],
+                'include': True
+            })
+            
+        except Exception as e:
+            # If conversion fails, skip this file
+            st.warning(f"⚠️ Could not process {original_name}: {str(e)}")
+            continue
     
     return files_data
 

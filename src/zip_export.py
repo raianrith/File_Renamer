@@ -6,31 +6,43 @@ import io
 from typing import List, Dict, Any, Tuple
 import pandas as pd
 from datetime import datetime
+from PIL import Image
 
 
 def create_zip_with_renamed_files(
     files_data: List[Dict[str, Any]]
 ) -> bytes:
     """
-    Create a ZIP file containing renamed image files.
+    Create a ZIP file containing renamed image files in their output formats.
     
     Args:
         files_data: List of dictionaries with keys:
             - 'original_name': original filename
             - 'new_name': new filename
-            - 'bytes': image bytes
+            - 'pil_image': PIL Image object
+            - 'output_format': target format (jpg, png, etc.)
             - 'include': whether to include this file
             
     Returns:
         ZIP file as bytes
     """
+    from src.format_converter import FormatConverter
+    
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for file_info in files_data:
             if file_info.get('include', True):
                 new_name = file_info['new_name']
-                file_bytes = file_info['bytes']
+                
+                # Convert PIL image to the appropriate output format
+                if 'pil_image' in file_info and 'output_format' in file_info:
+                    pil_image = file_info['pil_image']
+                    output_format = file_info['output_format'].upper()
+                    file_bytes = FormatConverter.convert_pil_to_bytes(pil_image, output_format)
+                else:
+                    # Fallback to original bytes if no PIL image available
+                    file_bytes = file_info['bytes']
                 
                 # Add file to ZIP
                 zip_file.writestr(new_name, file_bytes)

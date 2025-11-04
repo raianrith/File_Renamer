@@ -1,3 +1,6 @@
 tesseract-ocr
 tesseract-ocr-eng
+libcairo2-dev
+libheif-dev
+poppler-utils
 

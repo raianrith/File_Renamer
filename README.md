@@ -1,14 +1,20 @@
-# 📸 Smart JPEG Renamer
+# 📸 Weidert AI File Renamer v2
 
-**Production-ready Streamlit app for intelligent batch renaming of JPEG files using Google Gemini Vision AI**
+**Production-ready Streamlit app for intelligent batch renaming using Google Gemini Vision AI**
 
-Automatically analyze image content and generate descriptive, consistent filenames with review capabilities, EXIF data support, optional OCR, and batch export.
+Automatically analyze image and document content to generate descriptive, consistent filenames with review capabilities, EXIF data support, optional OCR, and batch export.
 
 ---
 
 ## ✨ Features
 
-- 🤖 **AI-Powered Analysis**: Uses Google Gemini Vision to understand image content
+### **🎉 v2 - Multi-Format Support!**
+- **Supported Formats**: JPEG, PNG, HEIC, SVG, PDF, GIF, WebP, BMP
+- **Smart Conversion**: Automatically converts all formats for AI analysis
+- **Format Preservation**: Maintains original quality with intelligent output format selection
+
+### **Core Features**
+- 🤖 **AI-Powered Analysis**: Uses Google Gemini Vision to understand content
 - 📝 **Smart Naming**: Generates descriptive filenames based on visual content
 - 🔍 **Multiple Casing Styles**: kebab-case, snake_case, camelCase, or Title Case
 - 📅 **EXIF Support**: Optional date prefixes from image metadata (YYYYMMDD_)
@@ -28,6 +34,7 @@ Automatically analyze image content and generate descriptive, consistent filenam
 - Python 3.10 or higher
 - Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
 - Optional: Tesseract OCR for text detection
+- System packages for format support (auto-installed on Streamlit Cloud)
 
 ### Installation
 
