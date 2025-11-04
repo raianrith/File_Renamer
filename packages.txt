@@ -1,4 +1,3 @@
-# System packages for Streamlit Cloud
 tesseract-ocr
 tesseract-ocr-eng
 
